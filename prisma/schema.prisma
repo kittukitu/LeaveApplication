@@ -1,0 +1,74 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int       @id @default(autoincrement())
+  email              String    @unique
+  password           String
+  name               String?
+  phone              String?
+  role               String    @default("user")
+  level              String    @default("basic")
+  tenantId           String?
+  isVerified         Boolean   @default(false)
+  isActive           Boolean   @default(true)
+  lastLogin          DateTime?
+  resetToken         String?
+  resetTokenExpiry   DateTime?
+  verificationToken  String?
+  verificationExpiry DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Add these relation fields
+  leaveRequests LeaveRequest[]
+  leaveBalance  LeaveBalance?
+
+  @@index([tenantId]) // MANDATORY: AppKit performance index
+  @@map("users")
+}
+
+model LeaveRequest {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leaveType     String // "casual", "sick", "annual"
+  startDate     DateTime
+  endDate       DateTime
+  totalDays     Int
+  reason        String?
+  status        String   @default("pending") // "pending", "approved", "rejected"
+  adminComments String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([leaveType])
+  @@map("leave_requests")
+}
+
+model LeaveBalance {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  casualLeaves Int      @default(12)
+  sickLeaves   Int      @default(6)
+  casualTaken  Int      @default(0)
+  sickTaken    Int      @default(0)
+  annualLeaves Int      @default(0)
+  annualTaken  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("leave_balances")
+}

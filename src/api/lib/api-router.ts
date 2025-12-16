@@ -1,0 +1,83 @@
+/**
+ * FBCA Auto-Discovery Router
+ * @file userapp/src/api/lib/api-router.ts
+ *
+ * @llm-rule WHEN: Need automatic API route discovery based on feature directories
+ * @llm-rule AVOID: Manual route registration - defeats FBCA auto-discovery purpose
+ * @llm-rule NOTE: Follows {featureName}/{featureName}.route.ts naming convention for TypeScript or .js for JavaScript
+ */
+
+import express from 'express';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { dirname, join } from 'path';
+import { readdir } from 'fs/promises';
+import { loggerClass } from '@voilajsx/appkit/logger';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+export async function createApiRouter() {
+  const router = express.Router();
+  const discoveredRoutes: string[] = [];
+  const logger = loggerClass.get('api-router');
+
+  // API root route - list available endpoints
+  router.get('/', (_req, res) => {
+    res.json({
+      message: 'API Server - Feature-Based Component Architecture',
+      version: '1.0.0',
+      endpoints: {
+        health: '/health',
+        api: '/api',
+        features: discoveredRoutes.map(route => `/api${route}`)
+      },
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  try {
+    // Auto-discover feature routes
+    const featuresPath = join(__dirname, '../features');
+    const features = await readdir(featuresPath, { withFileTypes: true });
+
+    logger.info('🔍 Discovering API routes:');
+
+    for (const feature of features) {
+      if (feature.isDirectory()) {
+        const featureName = feature.name;
+        // Try .ts first, then .js
+        const routeFiles = [
+          join(featuresPath, featureName, `${featureName}.route.ts`),
+          join(featuresPath, featureName, `${featureName}.route.js`)
+        ];
+
+        let loaded = false;
+        for (const routeFile of routeFiles) {
+          try {
+            const fileUrl = pathToFileURL(routeFile).href;
+            const { default: featureRouter } = await import(fileUrl);
+            router.use(`/${featureName}`, featureRouter);
+            discoveredRoutes.push(`/${featureName}`);
+            const fileType = routeFile.endsWith('.ts') ? '.ts' : '.js';
+            logger.info(`  /api/${featureName} -> ${featureName}.route${fileType}`);
+            loaded = true;
+            break;
+          } catch (error) {
+            // Continue to next file type
+          }
+        }
+
+        if (!loaded) {
+          logger.warn(`⚠️  Could not load route for feature "${featureName}"`);
+        }
+      }
+    }
+
+    logger.info('✅ API routes discovered');
+
+  } catch (error) {
+    logger.warn('⚠️ No features directory found');
+  }
+
+  return router;
+}
